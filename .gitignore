@@ -1,0 +1,10 @@
+# Folders
+build/
+__pycache__/
+*.egg-info/
+
+# Specific Files
+.vscode/settings.json
+
+# File Types
+*.pyc
