@@ -14,7 +14,7 @@ from clippy.clipsources.clipsource import ClipSource
 class X11Accessor(Accessor):
     """Holds information about the current clipboard and its operation."""
 
-    def __init__(self, clipsources: list[ClipSource]) -> None:
+    def __init__(self, clipsources: Iterable[ClipSource]) -> None:
         """Create a new accessor compatible with the X11 window system."""
         super().__init__(clipsources)
         self.display = Xlib.display.Display()
@@ -37,33 +37,17 @@ class X11Accessor(Accessor):
             ClipboardTarget.URI_LIST: _ga("text/uri-list"),
         }
 
-    def get_available_targets(self) -> Iterable[ClipboardTarget]:
+    def get_supported_targets(self) -> Iterable[ClipboardTarget]:
         """Return an iterable with every selection target currently supported."""
-        return (target for source in self._sources for target in source.targets)
+        return (target for source in self._sources for target in source.supported_targets)
 
-    def write_to_clipboard(
-        self,
-        targets: Iterable[ClipboardTarget] | None = None,
-    ) -> None:
+    def write_to_clipboard(self) -> None:
         """Fill the clipboard with values from the sources."""
-        # If target whitelist is empty, use every target available
-        if targets is None:
-            targets = set()
-            targets.update(target for s in self._sources for target in s.targets)
-
         # Map each desired target to a single source
-        target_source_map = dict.fromkeys(targets)
+        target_source_map: dict[ClipboardTarget, ClipSource] = {}
         for source in self._sources:
-            for source_target in source.targets:
-                if source_target in target_source_map:
-                    target_source_map[source_target] = source
-
-        # Left over targets are flagged as erroneous
-        lost_targets = [t for t, source in target_source_map.items() if not source]
-        if lost_targets:
-            self._logger.error("Got clipboard target without source for a value.")
-            errmsg = f"No source for target(s): {lost_targets}"
-            raise ValueError(errmsg)
+            for target in source.requested_targets:
+                target_source_map[target] = source
 
         # Write the target and its associated source's value to the clipboard
         ts: list[ClipboardTarget] = []
@@ -128,19 +112,13 @@ class X11Accessor(Accessor):
             return
 
         self._logger.error("took ownership of selection {%s}", "CLIPBOARD")
-        types = {
-            self.TARGET_ATOM_MAP[t]: v for t, v in zip(targets, contents, strict=True)
-        }
+        types = {self.TARGET_ATOM_MAP[t]: v for t, v in zip(targets, contents, strict=True)}
 
         # The event loop, waiting for and processing requests
         while True:
             e = d.next_event()
 
-            if (
-                e.type == Xlib.X.SelectionRequest
-                and e.owner == w
-                and e.selection == sel_atom
-            ):
+            if e.type == Xlib.X.SelectionRequest and e.owner == w and e.selection == sel_atom:
                 client = e.requestor
 
                 if e.property == Xlib.X.NONE:
@@ -200,9 +178,7 @@ class X11Accessor(Accessor):
 
                 client.send_event(ev)
 
-            elif (
-                e.type == Xlib.X.SelectionClear and e.window == w and e.atom == sel_atom
-            ):
+            elif e.type == Xlib.X.SelectionClear and e.window == w and e.atom == sel_atom:
                 self._logger.error("lost ownership of selection {%s}", "CLIPBOARD")
                 return
 

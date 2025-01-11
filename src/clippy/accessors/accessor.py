@@ -13,13 +13,13 @@ class Accessor(ABC):
 
     _logger = logging.getLogger()
 
-    def __init__(self, sources: list[ClipSource]) -> None:
+    def __init__(self, sources: Iterable[ClipSource]) -> None:
         """Set up accessor base."""
         super().__init__()
-        self._sources = sources.copy()
+        self._sources = list(sources)
 
     @abstractmethod
-    def get_available_targets(self) -> Iterable[ClipboardTarget]:
+    def get_supported_targets(self) -> Iterable[ClipboardTarget]:
         """Return an iterable with every target supported by the current clipboard."""
 
     @abstractmethod
@@ -34,7 +34,8 @@ class Accessor(ABC):
         sourceinfo = "\nSource information:\n"
         for source in self._sources:
             sourceinfo += f"  {source}:\n    Supported targets:\n"
-            for target in source.targets:
+            for target in source.supported_targets:
                 sourceinfo += f"      {target}\n"
                 sourceinfo += f"        {source.get_value(target)}\n"
+            sourceinfo += f"  Requested targets: {list(source.requested_targets)}"
         self._logger.info(sourceinfo)
